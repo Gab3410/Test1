@@ -1,0 +1,166 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.Stack;
+import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+
+public class DrawApp extends JFrame {
+    private BufferedImage canvas;
+    private Graphics2D g2d;
+    private Color currentColor = Color.BLACK;
+    private String currentTool = "Pencil";
+    private int lastX, lastY;
+    private Stack<BufferedImage> undoStack = new Stack<>();
+    private Stack<BufferedImage> redoStack = new Stack<>();
+
+    public DrawApp() {
+        setTitle("Draw It");
+        setSize(800, 600);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        canvas = new BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB);
+        g2d = canvas.createGraphics();
+        g2d.setColor(Color.WHITE);
+        g2d.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+
+        JPanel drawingPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.drawImage(canvas, 0, 0, null);
+            }
+        };
+
+        drawingPanel.setPreferredSize(new Dimension(800, 600));
+        drawingPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                lastX = e.getX();
+                lastY = e.getY();
+                saveState();
+            }
+        });
+
+        drawingPanel.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                draw(e.getX(), e.getY());
+                drawingPanel.repaint();
+            }
+        });
+
+        add(drawingPanel, BorderLayout.CENTER);
+        createToolbar();
+    }
+
+    private void createToolbar() {
+        JToolBar toolbar = new JToolBar();
+        JButton pencilButton = new JButton("Pencil");
+        JButton brushButton = new JButton("Brush");
+        JButton eraserButton = new JButton("Eraser");
+        JButton colorButton = new JButton("Color");
+        JButton undoButton = new JButton("Undo");
+        JButton redoButton = new JButton("Redo");
+        JButton saveButton = new JButton("Save");
+
+        pencilButton.addActionListener(e -> currentTool = "Pencil");
+        brushButton.addActionListener(e -> currentTool = "Brush");
+        eraserButton.addActionListener(e -> currentTool = "Eraser");
+        colorButton.addActionListener(e -> {
+            Color color = JColorChooser.showDialog(this, "Choose a color", currentColor);
+            if (color != null) {
+                currentColor = color;
+            }
+        });
+        undoButton.addActionListener(e -> undo());
+        redoButton.addActionListener(e -> redo());
+        saveButton.addActionListener(e -> saveImage());
+
+        toolbar.add(pencilButton);
+        toolbar.add(brushButton);
+        toolbar.add(eraserButton);
+        toolbar.add(colorButton);
+        toolbar.add(undoButton);
+        toolbar.add(redoButton);
+        toolbar.add(saveButton);
+
+        add(toolbar, BorderLayout.NORTH);
+    }
+
+    private void draw(int x, int y) {
+        if (currentTool.equals("Pencil")) {
+            g2d.setColor(currentColor);
+            g2d.drawLine(lastX, lastY, x, y);
+        } else if (currentTool.equals("Brush")) {
+            g2d.setColor(currentColor);
+            g2d.fillOval(x - 5, y - 5, 10, 10);
+        } else if (currentTool.equals("Eraser")) {
+            g2d.setColor(Color.WHITE);
+            g2d.fillRect(x - 10, y - 10, 20, 20);
+        }
+        lastX = x;
+        lastY = y;
+    }
+
+    private void saveState() {
+        undoStack.push(copyImage(canvas));
+        redoStack.clear();
+    }
+
+    private BufferedImage copyImage(BufferedImage img) {
+        BufferedImage copy = new BufferedImage(img.getWidth(), img.getHeight(), img.getType());
+        Graphics2D g2dCopy = copy.createGraphics();
+        g2dCopy.drawImage(img, 0, 0, null);
+        g2dCopy.dispose();
+        return copy;
+    }
+
+    private void undo() {
+        if (!undoStack.isEmpty()) {
+            redoStack.push(copyImage(canvas));
+            canvas = undoStack.pop();
+            repaint();
+        }
+    }
+
+    private void redo() {
+        if (!redoStack.isEmpty()) {
+            undoStack.push(copyImage(canvas));
+            canvas = redoStack.pop();
+            repaint();
+        }
+    }
+
+    private void saveImage() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Specify a file to save");
+        int userSelection = fileChooser.showSaveDialog(this);
+
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+            try {
+                java.io.File fileToSave = fileChooser.getSelectedFile();
+                String filePath = fileToSave.getAbsolutePath();
+                if (!filePath.endsWith(".png") && !filePath.endsWith(".jpg")) {
+                    filePath += ".png"; // Default to PNG if no extension is provided
+                }
+                ImageIO.write(canvas, "png", (ImageOutputStream) new File(filePath));
+                JOptionPane.showMessageDialog(this, "Image saved successfully!");
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Error saving image: " + e.getMessage());
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            DrawApp app = new DrawApp();
+            app.setVisible(true);
+        });
+    }
+}
